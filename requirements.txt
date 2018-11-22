@@ -1,3 +1,8 @@
 beautifulsoup4==4.6.3
 pandas==0.23.4
-
+KNime / RapidMiner
+Technology scraper:
+LinkedIn scraper:
+Facebook scraper:
+Parsehub/Octoparse
+Atomic or alike
