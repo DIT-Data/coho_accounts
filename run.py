@@ -3,13 +3,37 @@ import os
 import pandas as pd
 from datetime import datetime
 
+def printProgressBar (iteration, total, prefix = '', suffix = '', decimals = 1, length = 100, fill = '█'):
+    """
+    Call in a loop to create terminal progress bar
+    @params:
+        iteration   - Required  : current iteration (Int)
+        total       - Required  : total iterations (Int)
+        prefix      - Optional  : prefix string (Str)
+        suffix      - Optional  : suffix string (Str)
+        decimals    - Optional  : positive number of decimals in percent complete (Int)
+        length      - Optional  : character length of bar (Int)
+        fill        - Optional  : bar fill character (Str)
+    """
+    percent = ("{0:." + str(decimals) + "f}").format(100 * (iteration / float(total)))
+    filledLength = int(length * iteration // total)
+    bar = fill * filledLength + '-' * (length - filledLength)
+    print('\r%s |%s| %s%% %s' % (prefix, bar, percent, suffix), end = '', flush=True)
+    # Print New Line on Complete
+    if iteration == total:
+        print()
+
 input_dir = "input/"
-output_dir = "complete/"
 
 final_pd = pd.DataFrame(columns=['chn'])
+i = 0
+l = len(os.listdir(input_dir))
 
+printProgressBar(0, l, prefix='Progress:', suffix='Complete')
 for filename in os.listdir(input_dir):
-
+    if i % 100 == 0:
+        printProgressBar(i + 1, l, prefix='Progress:', suffix='Complete')
+    i += 1
     # Extracting date and companies house number
     day = filename[-7:-5]
     month = filename[-9:-7]
@@ -33,12 +57,14 @@ for filename in os.listdir(input_dir):
     out_pd = pd.DataFrame.from_dict(out_dict, orient='index')
     out_pd = out_pd.transpose()
     out_pd["chn"] = chn
-    se = pd.Series(["%s/%s/%s" % (day, month, year), "%s/%s/%s" % (day, month, str(int(year)-1))])
-    out_pd["date"] = se.values
+    if out_pd["chn"].count() > 1:
+        se = pd.Series(["%s/%s/%s" % (day, month, year), "%s/%s/%s" % (day, month, str(int(year)-1))])
+        out_pd["date"] = se.values
+    else:
+        out_pd["date"] = "%s/%s/%s" % (day, month, year)
+
     final_pd = final_pd.append(out_pd, sort=False)
 
 final_pd.to_csv("output/output_%s.csv" % (datetime.now().strftime("%Y%m%d-%H%M%S")), index=False)
 
-# Moving files to completed
-for filename in os.listdir(input_dir):
-    os.rename("%s%s" % (input_dir, filename), "%s%s" % (output_dir, filename))
+printProgressBar(1, 1, prefix='Progress:', suffix='Complete')
