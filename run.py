@@ -2,6 +2,13 @@ from bs4 import BeautifulSoup
 import os
 import pandas as pd
 from datetime import datetime
+import sqlalchemy
+import shutil
+
+def add_column(engine, table_name, column):
+    column_name = column.compile(dialect=engine.dialect)
+    column_type = column.type.compile(engine.dialect)
+    engine.execute('ALTER TABLE %s ADD COLUMN %s %s' % (table_name, column_name, column_type))
 
 def printProgressBar (iteration, total, prefix = '', suffix = '', decimals = 1, length = 100, fill = '█'):
     """
@@ -18,22 +25,31 @@ def printProgressBar (iteration, total, prefix = '', suffix = '', decimals = 1, 
     percent = ("{0:." + str(decimals) + "f}").format(100 * (iteration / float(total)))
     filledLength = int(length * iteration // total)
     bar = fill * filledLength + '-' * (length - filledLength)
-    print('\r%s |%s| %s%% %s' % (prefix, bar, percent, suffix), end = '', flush=True)
+    print('\r%s |%s| %s%% %s %s/%s' % (prefix, bar, percent, suffix, iteration, total), end = '', flush=True)
     # Print New Line on Complete
     if iteration == total:
         print()
 
+# Getting directory names
 input_dir = "input/"
+complete_dir = "complete/"
+current_dir = os.getcwd()
 
-final_pd = pd.DataFrame(columns=['chn'])
+# Create or connect to Database
+db = sqlalchemy.create_engine(r'sqlite:///'+current_dir+'/chfin.db', echo=False)
+
+# Counters for progress bar
 i = 0
 l = len(os.listdir(input_dir))
 
-printProgressBar(0, l, prefix='Progress:', suffix='Complete')
+# Initialize progressbar
+printProgressBar(0, l)
 for filename in os.listdir(input_dir):
+    # Update progress bar once every 100 files
     if i % 100 == 0:
-        printProgressBar(i + 1, l, prefix='Progress:', suffix='Complete')
+        printProgressBar(i + 1, l)
     i += 1
+
     # Extracting date and companies house number
     day = filename[-7:-5]
     month = filename[-9:-7]
@@ -45,6 +61,7 @@ for filename in os.listdir(input_dir):
     figures = soup.find_all(name="ix:nonfraction")
     out_dict = {}
 
+    # Fixing Column Name and changing format of figures
     for fig in figures:
         key_name = fig["name"].split(":")[-1]
         value = float(fig.text.replace(',', '').replace('-', "0"))
@@ -54,6 +71,7 @@ for filename in os.listdir(input_dir):
     for key in out_dict:
         out_dict[key] = out_dict[key][:2]
 
+    # Creating a temporary DataFrame
     out_pd = pd.DataFrame.from_dict(out_dict, orient='index')
     out_pd = out_pd.transpose()
     out_pd["chn"] = chn
@@ -63,8 +81,18 @@ for filename in os.listdir(input_dir):
     else:
         out_pd["date"] = "%s/%s/%s" % (day, month, year)
 
-    final_pd = final_pd.append(out_pd, sort=False)
+    # Adding any previously missing column into the sqlite database
+    if db.dialect.has_table(db, "fin"):
+        for col in out_pd:
+            if col not in db.execute("SELECT * FROM fin LIMIT 1").keys():
+                new_col = sqlalchemy.Column(col, sqlalchemy.FLOAT)
+                add_column(db, "fin", new_col)
 
-final_pd.to_csv("output/output_%s.csv" % (datetime.now().strftime("%Y%m%d-%H%M%S")), index=False)
+    # Appending data from DataFrame into sqlite database
+    out_pd.to_sql("fin", con=db, if_exists='append', index=False)
+    del out_pd
 
-printProgressBar(1, 1, prefix='Progress:', suffix='Complete')
+    # Moving file into the complete dir
+    shutil.move(input_dir + filename, complete_dir)
+
+printProgressBar(1, 1)
