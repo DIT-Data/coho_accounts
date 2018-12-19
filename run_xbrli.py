@@ -58,48 +58,33 @@ for filename in os.listdir(input_dir):
 
     # Opening file and looping through figures available
     soup = BeautifulSoup(open("%s%s" % (input_dir, filename), encoding='utf-8'), "html.parser")
-    table_rows = soup.find_all(name="tr")
+    figures = soup.find_all(name="ix:nonfraction")
     out_dict = {}
-    name_checker = {}
 
-    for table_row in table_rows:
+    # Fixing Column Name and changing format of figures
 
-        if len(table_row.find_all(name="span")) > 0:
+    for fig in figures:
+        tag_name = fig["name"].split(":")[-1]
+        contextref = fig["contextref"]
+        context = soup.find(name="xbrli:context", id=contextref)
 
-            figures = table_row.find_all(name="ix:nonfraction")
+        segment = context.find(name="xbrli:segment")
+        chn = context.find(name="xbrli:identifier")
+        date = context.find(name="xbrli:instant")
+        if segment != None:
+            segment_text = segment.getText().split(":")[-1]
+            key_name = tag_name + ":" + segment_text
+        else:
+            key_name = tag_name
 
-            if len(figures) > 0:
-                if len(table_row.find_all(name="p")) > 0:
-                    tr_name = table_row.find_all(name="p")[0].text
-                else:
-                    tr_name = table_row.find_all(name="span")[0].text
-
-        # Fixing Column Name and changing format of figures
-        # TODO: Check if there are more names than just one. If yes, assign contextref.
-
-            for fig in figures:
-                key_name = fig["name"].split(":")[-1]
-                name_checker.setdefault(key_name, 0)
-                name_checker[key_name] += 1
-
-            for fig in figures:
-                key_name = fig["name"].split(":")[-1]
-                # if name_checker[key_name] > 2:
-                #     key_name = key_name + ":" + tr_name
-                key_name = key_name + ":" + tr_name
-                # TODO: Multiply by scale and check if value should be negative
-                value = float(fig.text.replace(',', '').replace('-', "0"))
-                out_dict.setdefault(key_name.lower().strip(), []).append(value)
+        # TODO: Multiply by scale and check if value should be negative
+        value = float(fig.text.replace(',', '').replace('-', "0"))
+        out_dict.setdefault(key_name, []).append(value)
 
     # # Removing additional entries, only including current and previous year figures
     # for key in out_dict:
     #     out_dict[key] = out_dict[key][:2]
 
-    # Creating a temporary DataFrame
-    out_dict_keys = list(out_dict.keys())
-    for key in out_dict_keys:
-        if len(out_dict[key]) > 2:
-            del out_dict[key]
 
     out_pd = pd.DataFrame.from_dict(out_dict, orient='index')
     out_pd = out_pd.transpose()
