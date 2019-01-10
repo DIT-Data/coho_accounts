@@ -67,48 +67,64 @@ for filename in os.listdir(input_dir):
         tag_name = fig["name"].split(":")[-1]
         contextref = fig["contextref"]
         context = soup.find(name="xbrli:context", id=contextref)
+        if context is not None:
 
-        segment = context.find(name="xbrli:segment")
-        chn = context.find(name="xbrli:identifier")
-        date = context.find(name="xbrli:instant")
-        if segment != None:
-            segment_text = segment.getText().split(":")[-1]
-            key_name = tag_name + ":" + segment_text
-        else:
+            end_date = context.find(name="xbrli:instant")
+            start_date = None
+            if end_date is None:
+                start_date = context.find(name="xbrli:startdate").text
+                end_date = context.find(name="xbrli:enddate").text
+            else:
+                end_date = end_date.text
+
+            out_dict.setdefault(end_date, {})
+            if start_date is not None:
+                out_dict[end_date].setdefault("start_date", [start_date])
+            out_dict[end_date].setdefault("end_date", [end_date])
+
+            segment = context.find(name="xbrli:segment")
             key_name = tag_name
+            if segment is not None:
+                segment_text = segment.getText().split(":")[-1]
+                key_name = tag_name + ":" + segment_text
 
-        # TODO: Multiply by scale and check if value should be negative
-        value = float(fig.text.replace(',', '').replace('-', "0"))
-        out_dict.setdefault(key_name, []).append(value)
+            # Multiplying by scale and check if value should be negative
+            multiplier = 1
+            if fig.has_attr('sign'):
+                if fig['sign'] == "-":
+                    multiplier = -1
+            if fig.has_attr('scale'):
+                if int(fig['scale']) > 0:
+                    multiplier = multiplier * (10 ** int(fig['scale']))
+                    print(filename)
+            # if fig.has_attr('decimals'):
+            #     if fig['decimals'] == "INF":
+            #         multiplier = multiplier * 0.01
+            value = float(fig.text.replace(',', '').replace('-', "0"))
+            out_dict[end_date].setdefault(key_name, [""])[0] = value * multiplier
 
     # # Removing additional entries, only including current and previous year figures
     # for key in out_dict:
     #     out_dict[key] = out_dict[key][:2]
 
+    # Adding Companies house number and filename to pandas df for reference. Adding any missing columns to sql table
+    # and appending dataframe to sql db.
+    for key in out_dict:
+        out_pd = pd.DataFrame.from_dict(out_dict[key], orient='columns')
+        out_pd["chn"] = chn
+        out_pd["file_name"] = filename
 
-    out_pd = pd.DataFrame.from_dict(out_dict, orient='index')
-    out_pd = out_pd.transpose()
-    out_pd["chn"] = chn
-    try:
-        if out_pd["chn"].count() > 1:
-            se = pd.Series(["%s/%s/%s" % (day, month, year), "%s/%s/%s" % (day, month, str(int(year)-1))])
-            out_pd["date"] = se.values
-        else:
-            out_pd["date"] = "%s/%s/%s" % (day, month, year)
-    except:
-        out_pd.to_csv("out_pd.csv")
+        # Adding any previously missing column into the sqlite database
 
-    # Adding any previously missing column into the sqlite database
-    if db.dialect.has_table(db, "fin"):
-        for col in out_pd:
-            print(db.execute("SELECT * FROM fin LIMIT 1").keys())
-            if col not in db.execute("SELECT * FROM fin LIMIT 1").keys():
-                new_col = sqlalchemy.Column(col, sqlalchemy.FLOAT)
-                add_column(db, "fin", new_col)
+        if db.dialect.has_table(db, "fin"):
+            for col in out_pd:
+                if col not in db.execute("SELECT * FROM fin LIMIT 1").keys():
+                    new_col = sqlalchemy.Column(col, sqlalchemy.FLOAT)
+                    add_column(db, "fin", new_col)
 
-    # Appending data from DataFrame into sqlite database
-    out_pd.to_sql("fin", con=db, if_exists='append', index=False)
-    del out_pd
+        # Appending data from DataFrame into sqlite database
+        out_pd.to_sql("fin", con=db, if_exists='append', index=False)
+    del out_dict
 
     # # Moving file into the complete dir
     # shutil.move(input_dir + filename, complete_dir)
