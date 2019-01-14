@@ -126,7 +126,7 @@ for filename in os.listdir(input_dir):
         out_pd.to_sql("fin", con=db, if_exists='append', index=False)
     del out_dict
 
-    # # Moving file into the complete dir
-    # shutil.move(input_dir + filename, complete_dir)
+    # Moving file into the complete dir
+    shutil.move(input_dir + filename, complete_dir)
 
 printProgressBar(1, 1)
